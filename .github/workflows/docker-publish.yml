@@ -76,6 +76,28 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Validate custom Caddy binary
+        if: github.event_name == 'pull_request'
+        env:
+          IMAGE_ARCHIVE: ${{ runner.temp }}/caddy-image.tar
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          docker load --input "$IMAGE_ARCHIVE"
+          image=$(printf '%s\n' "$TAGS" | head -n 1)
+          docker run --rm "$image" caddy version
+          docker run --rm "$image" caddy list-modules | grep -Fx 'dns.providers.porkbun'
+          docker run --rm -i "$image" caddy validate --config - --adapter caddyfile <<'EOF'
+          example.com {
+            tls {
+              dns porkbun {
+                api_key validation-only
+                api_secret_key validation-only
+              }
+            }
+            respond "ok"
+          }
+          EOF
+
       # Sign the resulting Docker image digest except on PRs.
       # This will only write to the public Rekor transparency log when the Docker
       # repository is public to avoid leaking data.  If you would like to publish
